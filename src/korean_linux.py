@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Korean Linux - 한국어로 리눅스 명령어 실행하기
-Google Colab 전용 패키지
+Google Colab 전용 패키지 (v2 - 파라미터 보정 강화)
 """
 
 import os
@@ -9,6 +9,7 @@ import sys
 import subprocess
 import re
 import json
+from difflib import SequenceMatcher
 
 # 전역 변수
 _model = None
@@ -36,27 +37,27 @@ Remember:
 
 You have access of the following tools:
 [
-  {"name": "ls_command", "description": "List directory contents.", "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "options": {"type": "string"}}, "required": ["path"]}},
-  {"name": "cd_command", "description": "Change the current working directory.", "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}},
-  {"name": "mkdir_command", "description": "Create a new directory.", "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}},
-  {"name": "rm_command", "description": "Remove files or directories.", "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "recursive": {"type": "boolean"}}, "required": ["path"]}},
-  {"name": "cp_command", "description": "Copy files or directories.", "parameters": {"type": "object", "properties": {"source": {"type": "string"}, "destination": {"type": "string"}}, "required": ["source", "destination"]}},
-  {"name": "mv_command", "description": "Move or rename files.", "parameters": {"type": "object", "properties": {"source": {"type": "string"}, "destination": {"type": "string"}}, "required": ["source", "destination"]}},
-  {"name": "find_command", "description": "Find files by name pattern.", "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "name": {"type": "string"}}, "required": ["path", "name"]}},
-  {"name": "cat_command", "description": "Display file contents.", "parameters": {"type": "object", "properties": {"file": {"type": "string"}}, "required": ["file"]}},
-  {"name": "grep_command", "description": "Search for patterns in files.", "parameters": {"type": "object", "properties": {"pattern": {"type": "string"}, "file": {"type": "string"}}, "required": ["pattern", "file"]}},
-  {"name": "head_command", "description": "Display first lines of a file.", "parameters": {"type": "object", "properties": {"file": {"type": "string"}, "lines": {"type": "integer"}}, "required": ["file"]}},
-  {"name": "tail_command", "description": "Display last lines of a file.", "parameters": {"type": "object", "properties": {"file": {"type": "string"}, "lines": {"type": "integer"}}, "required": ["file"]}},
-  {"name": "wc_command", "description": "Count lines, words, and bytes.", "parameters": {"type": "object", "properties": {"file": {"type": "string"}}, "required": ["file"]}},
-  {"name": "ps_command", "description": "Display running processes.", "parameters": {"type": "object", "properties": {"options": {"type": "string"}}, "required": []}},
-  {"name": "df_command", "description": "Display disk space usage.", "parameters": {"type": "object", "properties": {"options": {"type": "string"}}, "required": []}},
-  {"name": "du_command", "description": "Display directory space usage.", "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "options": {"type": "string"}}, "required": ["path"]}},
-  {"name": "top_command", "description": "Display system processes in real-time.", "parameters": {"type": "object", "properties": {}, "required": []}},
-  {"name": "ping_command", "description": "Test network connectivity.", "parameters": {"type": "object", "properties": {"host": {"type": "string"}, "count": {"type": "integer"}}, "required": ["host"]}},
-  {"name": "curl_command", "description": "Transfer data from URL.", "parameters": {"type": "object", "properties": {"url": {"type": "string"}, "options": {"type": "string"}}, "required": ["url"]}},
-  {"name": "chmod_command", "description": "Change file permissions.", "parameters": {"type": "object", "properties": {"mode": {"type": "string"}, "file": {"type": "string"}}, "required": ["mode", "file"]}},
-  {"name": "tar_command", "description": "Archive or extract files.", "parameters": {"type": "object", "properties": {"options": {"type": "string"}, "archive": {"type": "string"}, "files": {"type": "string"}}, "required": ["options", "archive"]}},
-  {"name": "Finish", "description": "Complete the task.", "parameters": {"type": "object", "properties": {"give_answer": {"type": "string"}}, "required": ["give_answer"]}}
+  {"name": "ls_command", "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "options": {"type": "string"}}, "required": ["path"]}},
+  {"name": "cd_command", "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}},
+  {"name": "mkdir_command", "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}},
+  {"name": "rm_command", "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "recursive": {"type": "boolean"}}, "required": ["path"]}},
+  {"name": "cp_command", "parameters": {"type": "object", "properties": {"source": {"type": "string"}, "destination": {"type": "string"}}, "required": ["source", "destination"]}},
+  {"name": "mv_command", "parameters": {"type": "object", "properties": {"source": {"type": "string"}, "destination": {"type": "string"}}, "required": ["source", "destination"]}},
+  {"name": "find_command", "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "name": {"type": "string"}}, "required": ["path", "name"]}},
+  {"name": "cat_command", "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}},
+  {"name": "grep_command", "parameters": {"type": "object", "properties": {"pattern": {"type": "string"}, "path": {"type": "string"}}, "required": ["pattern", "path"]}},
+  {"name": "head_command", "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "lines": {"type": "integer"}}, "required": ["path"]}},
+  {"name": "tail_command", "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "lines": {"type": "integer"}}, "required": ["path"]}},
+  {"name": "wc_command", "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "options": {"type": "string"}}, "required": ["path"]}},
+  {"name": "ps_command", "parameters": {"type": "object", "properties": {"options": {"type": "string"}}, "required": []}},
+  {"name": "df_command", "parameters": {"type": "object", "properties": {"options": {"type": "string"}}, "required": []}},
+  {"name": "du_command", "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "options": {"type": "string"}}, "required": ["path"]}},
+  {"name": "top_command", "parameters": {"type": "object", "properties": {"options": {"type": "string"}}, "required": []}},
+  {"name": "ping_command", "parameters": {"type": "object", "properties": {"host": {"type": "string"}, "count": {"type": "integer"}}, "required": ["host"]}},
+  {"name": "curl_command", "parameters": {"type": "object", "properties": {"url": {"type": "string"}, "options": {"type": "string"}}, "required": ["url"]}},
+  {"name": "chmod_command", "parameters": {"type": "object", "properties": {"mode": {"type": "string"}, "path": {"type": "string"}}, "required": ["mode", "path"]}},
+  {"name": "tar_command", "parameters": {"type": "object", "properties": {"operation": {"type": "string"}, "archive": {"type": "string"}, "files": {"type": "string"}}, "required": ["operation", "archive"]}},
+  {"name": "Finish", "parameters": {"type": "object", "properties": {"return_type": {"type": "string"}, "final_answer": {"type": "string"}}, "required": ["return_type"]}}
 ]"""
 
 
@@ -160,21 +161,39 @@ def _generate(prompt: str, max_new_tokens: int = 150) -> str:
 
 
 def _parse_response(response: str) -> dict:
-    """모델 응답 파싱"""
+    """모델 응답 파싱 - 강화된 버전"""
     if "<|im_end|>" in response:
-        response = response.split("<|im_end|}")[0]
+        response = response.split("<|im_end|>")[0]
+    if "<|im" in response:
+        response = response.split("<|im")[0]
     
-    result = {"thought": None, "action": None, "params": None}
+    result = {"thought": None, "action": None, "params": None, "raw": response}
     
-    # Thought 추출
+    # Thought 추출 - hallucination 제거
     thought_match = re.search(r"Thought:\s*(.+?)(?=\s*Action:|$)", response, re.DOTALL)
     if thought_match:
-        result["thought"] = thought_match.group(1).strip()
+        thought = thought_match.group(1).strip()
+        # hallucination 필터링: <|im 또는 이상한 텍스트 제거
+        if "<|im" in thought:
+            thought = thought.split("<|im")[0].strip()
+        if len(thought) > 100:
+            thought = thought[:100] + "..."
+        result["thought"] = thought
     
-    # Action 추출
+    # Action 추출 - 정규 액션만 허용
+    valid_actions = [
+        "ls_command", "cd_command", "mkdir_command", "rm_command",
+        "cp_command", "mv_command", "find_command", "cat_command",
+        "grep_command", "head_command", "tail_command", "wc_command",
+        "ps_command", "df_command", "du_command", "top_command",
+        "ping_command", "curl_command", "chmod_command", "tar_command", "Finish"
+    ]
+    
     action_match = re.search(r"Action:\s*(\w+)", response)
     if action_match:
-        result["action"] = action_match.group(1)
+        action = action_match.group(1)
+        if action in valid_actions:
+            result["action"] = action
     
     # Action Input 추출
     input_match = re.search(r"Action Input:\s*(\{[^}]+\})", response, re.DOTALL)
@@ -187,43 +206,210 @@ def _parse_response(response: str) -> dict:
     return result
 
 
+def _extract_params_from_query(query: str, action: str) -> dict:
+    """사용자 쿼리에서 파라미터 추출 (fallback)"""
+    params = {}
+    
+    # 파일/폴더 패턴
+    file_pattern = r'([^\s]+\.(txt|log|py|sh|csv|json|md|tar\.gz|tar|gz|zip))'
+    folder_pattern = r'([a-zA-Z0-9_\-./]+(?:폴더|디렉토리)?)'
+    
+    file_match = re.search(file_pattern, query)
+    folder_match = re.search(r'([a-zA-Z0-9_\-./]+)\s*(폴더|디렉토리)', query)
+    
+    # 액션별 파라미터 추출
+    if action == "ls_command":
+        params["path"] = "."
+        if folder_match:
+            params["path"] = folder_match.group(1)
+    
+    elif action == "cd_command":
+        if folder_match:
+            params["path"] = folder_match.group(1)
+        elif "홈" in query:
+            params["path"] = "~"
+        elif ".." in query or "상위" in query:
+            params["path"] = ".."
+        else:
+            # 가장 긴 경로 같은 문자열 추출
+            path_match = re.search(r'([a-zA-Z0-9_\-./]+)', query)
+            if path_match:
+                params["path"] = path_match.group(1)
+    
+    elif action in ["cat_command", "head_command", "tail_command", "wc_command"]:
+        if file_match:
+            params["path"] = file_match.group(1)
+    
+    elif action == "grep_command":
+        # 패턴 추출 (따옴표 안이나 영문 단어)
+        pattern_match = re.search(r"['\"]([^'\"]+)['\"]|(\b[a-zA-Z]+\b)", query)
+        if pattern_match:
+            params["pattern"] = pattern_match.group(1) or pattern_match.group(2)
+        if file_match:
+            params["path"] = file_match.group(1)
+    
+    elif action == "find_command":
+        params["path"] = "."
+        if "txt" in query:
+            params["name"] = "*.txt"
+        elif "log" in query:
+            params["name"] = "*.log"
+        elif "py" in query:
+            params["name"] = "*.py"
+        else:
+            params["name"] = "*"
+    
+    elif action == "mkdir_command":
+        if folder_match:
+            params["path"] = folder_match.group(1)
+        else:
+            name_match = re.search(r'([a-zA-Z0-9_\-]+)', query)
+            if name_match:
+                params["path"] = name_match.group(1)
+    
+    elif action == "rm_command":
+        if file_match:
+            params["path"] = file_match.group(1)
+        elif folder_match:
+            params["path"] = folder_match.group(1)
+            params["recursive"] = True
+    
+    elif action == "ping_command":
+        if "구글" in query or "google" in query.lower():
+            params["host"] = "google.com"
+        elif "네이버" in query or "naver" in query.lower():
+            params["host"] = "naver.com"
+        else:
+            host_match = re.search(r'([a-zA-Z0-9\-]+\.[a-zA-Z]{2,})', query)
+            if host_match:
+                params["host"] = host_match.group(1)
+        params["count"] = 4
+    
+    elif action == "df_command":
+        params["options"] = "-h"
+    
+    elif action == "du_command":
+        params["path"] = "."
+        params["options"] = "-sh"
+    
+    elif action == "ps_command":
+        params["options"] = "aux"
+    
+    elif action == "top_command":
+        params["options"] = "-b -n 1"
+    
+    return params
+
+
+def _find_similar_file(filename: str) -> str:
+    """현재 디렉토리에서 유사한 파일 찾기"""
+    try:
+        files = os.listdir(".")
+        best_match = None
+        best_ratio = 0.0
+        
+        for f in files:
+            ratio = SequenceMatcher(None, filename.lower(), f.lower()).ratio()
+            if ratio > best_ratio and ratio > 0.5:
+                best_ratio = ratio
+                best_match = f
+        
+        return best_match
+    except:
+        return None
+
+
+def _correct_params(action: str, params: dict, query: str) -> dict:
+    """파라미터 보정 - 모델 출력이 불완전할 때"""
+    if params is None:
+        params = {}
+    
+    # 쿼리에서 추출한 파라미터로 보완
+    fallback_params = _extract_params_from_query(query, action)
+    
+    # 필요한 파라미터가 없으면 fallback 사용
+    if action in ["cat_command", "head_command", "tail_command", "wc_command"]:
+        if not params.get("path"):
+            params["path"] = fallback_params.get("path", "")
+        # 파일 존재 확인
+        if params.get("path") and not os.path.exists(params["path"]):
+            similar = _find_similar_file(params["path"])
+            if similar:
+                params["path"] = similar
+    
+    elif action == "cd_command":
+        if not params.get("path"):
+            params["path"] = fallback_params.get("path", ".")
+    
+    elif action == "ls_command":
+        if not params.get("path"):
+            params["path"] = fallback_params.get("path", ".")
+    
+    elif action == "grep_command":
+        if not params.get("pattern"):
+            params["pattern"] = fallback_params.get("pattern", "")
+        if not params.get("path"):
+            params["path"] = fallback_params.get("path", "")
+    
+    elif action == "find_command":
+        if not params.get("path"):
+            params["path"] = fallback_params.get("path", ".")
+        if not params.get("name"):
+            params["name"] = fallback_params.get("name", "*")
+    
+    elif action == "mkdir_command":
+        if not params.get("path"):
+            params["path"] = fallback_params.get("path", "")
+    
+    elif action == "ping_command":
+        if not params.get("host"):
+            params["host"] = fallback_params.get("host", "google.com")
+        if not params.get("count"):
+            params["count"] = 4
+    
+    elif action in ["df_command", "ps_command", "top_command", "du_command"]:
+        params = {**fallback_params, **params}
+    
+    return params
+
+
 def _build_command(action: str, params: dict) -> str:
-    """액션과 파라미터로 실제 명령어 생성 (보정 포함)"""
+    """액션과 파라미터로 실제 명령어 생성"""
     
     # Colab 특수 처리
     if action == "cd_command":
-        return f"__CD__:{params.get('path', '.')}"  # 특수 마커
+        return f"__CD__:{params.get('path', '.')}"
     
     if action == "top_command":
-        return "top -b -n 1"  # interactive 모드 불가
+        return "top -b -n 1"
     
     if action == "ping_command":
         count = params.get("count", 4)
-        host = params.get("host", "")
+        host = params.get("host", "google.com")
         return f"ping -c {count} {host}"
     
     if action == "Finish":
-        return f"__FINISH__:{params.get('give_answer', '')}"
+        return f"__FINISH__:{params.get('final_answer', params.get('give_answer', ''))}"
     
     # 일반 명령어
     cmd_map = {
-        "ls_command": lambda p: f"ls {p.get('options', '-la')} {p.get('path', '.')}",
+        "ls_command": lambda p: f"ls {p.get('options', '-la')} {p.get('path', '.')}".strip(),
         "mkdir_command": lambda p: f"mkdir -p {p.get('path', '')}",
-        "rm_command": lambda p: f"rm {'-rf' if p.get('recursive') else ''} {p.get('path', '')}",
-        "cp_command": lambda p: f"cp {p.get('source', '')} {p.get('destination', '')}",
+        "rm_command": lambda p: f"rm {'-rf' if p.get('recursive') else ''} {p.get('path', '')}".strip(),
+        "cp_command": lambda p: f"cp -r {p.get('source', '')} {p.get('destination', '')}",
         "mv_command": lambda p: f"mv {p.get('source', '')} {p.get('destination', '')}",
         "find_command": lambda p: f"find {p.get('path', '.')} -name '{p.get('name', '*')}'",
-        "cat_command": lambda p: f"cat {p.get('file', '')}",
-        "grep_command": lambda p: f"grep '{p.get('pattern', '')}' {p.get('file', '')}",
-        "head_command": lambda p: f"head -n {p.get('lines', 10)} {p.get('file', '')}",
-        "tail_command": lambda p: f"tail -n {p.get('lines', 10)} {p.get('file', '')}",
-        "wc_command": lambda p: f"wc {p.get('file', '')}",
+        "cat_command": lambda p: f"cat {p.get('options', '')} {p.get('path', '')}".strip(),
+        "grep_command": lambda p: f"grep {p.get('options', '')} '{p.get('pattern', '')}' {p.get('path', '')}".strip(),
+        "head_command": lambda p: f"head -n {p.get('lines', 10)} {p.get('path', '')}",
+        "tail_command": lambda p: f"tail -n {p.get('lines', 10)} {p.get('path', '')}",
+        "wc_command": lambda p: f"wc {p.get('options', '-l')} {p.get('path', '')}",
         "ps_command": lambda p: f"ps {p.get('options', 'aux')}",
         "df_command": lambda p: f"df {p.get('options', '-h')}",
         "du_command": lambda p: f"du {p.get('options', '-sh')} {p.get('path', '.')}",
-        "curl_command": lambda p: f"curl {p.get('options', '')} {p.get('url', '')}",
-        "chmod_command": lambda p: f"chmod {p.get('mode', '')} {p.get('file', '')}",
-        "tar_command": lambda p: f"tar {p.get('options', '')} {p.get('archive', '')} {p.get('files', '')}",
+        "curl_command": lambda p: f"curl {p.get('options', '')} {p.get('url', '')}".strip(),
+        "chmod_command": lambda p: f"chmod {p.get('mode', '')} {p.get('path', '')}",
+        "tar_command": lambda p: f"tar -czf {p.get('archive', '')} {p.get('files', '')}".strip() if p.get('operation') == 'create' else f"tar -xzf {p.get('archive', '')}",
     }
     
     if action in cmd_map:
@@ -261,12 +447,42 @@ def _execute_command(cmd: str) -> str:
         return f"오류: {e}"
 
 
+def _infer_action_from_query(query: str) -> str:
+    """쿼리에서 액션 추론 (모델이 실패했을 때)"""
+    query_lower = query.lower()
+    
+    keywords = {
+        "ls_command": ["파일 목록", "뭐 있", "ls", "폴더 내용", "디렉토리 내용", "파일 보여", "목록 보여"],
+        "cd_command": ["이동", "폴더로", "디렉토리로", "가줘", "cd"],
+        "cat_command": ["내용 보여", "내용 출력", "읽어", "cat", "보여줘"],
+        "grep_command": ["찾아", "검색", "grep", "포함된"],
+        "find_command": ["find", "파일 찾", "검색"],
+        "mkdir_command": ["폴더 만들", "디렉토리 만들", "mkdir", "생성"],
+        "rm_command": ["삭제", "지워", "rm", "제거"],
+        "df_command": ["디스크", "용량", "df", "남은 공간"],
+        "du_command": ["폴더 크기", "폴더 용량", "du"],
+        "ps_command": ["프로세스", "실행 중", "ps"],
+        "ping_command": ["핑", "ping", "네트워크"],
+        "head_command": ["앞부분", "처음", "head"],
+        "tail_command": ["뒷부분", "마지막", "끝", "tail"],
+        "wc_command": ["줄 수", "라인 수", "몇 줄", "wc"],
+        "top_command": ["시스템 상태", "top", "리소스"],
+    }
+    
+    for action, kws in keywords.items():
+        for kw in kws:
+            if kw in query_lower:
+                return action
+    
+    return None
+
+
 def 한글(query: str, execute: bool = True, confirm_dangerous: bool = True) -> dict:
     """
     한국어로 리눅스 명령어 실행
     
     Args:
-        query: 한국어 명령 (예: "현재 폴더의 파일 목록을 보여줘")
+        query: 한국어 명령 (예: "현재 폴더에 뭐 있어?", "test.txt 내용 보여줘")
         execute: True면 명령어 실행, False면 변환만
         confirm_dangerous: True면 위험 명령어 확인 요청
     
@@ -284,8 +500,15 @@ def 한글(query: str, execute: bool = True, confirm_dangerous: bool = True) -> 
     response = _generate(prompt)
     parsed = _parse_response(response)
     
+    # 액션이 없으면 쿼리에서 추론
+    if not parsed["action"]:
+        parsed["action"] = _infer_action_from_query(query)
+    
+    # 파라미터 보정
+    parsed["params"] = _correct_params(parsed["action"], parsed["params"], query)
+    
     # 명령어 생성
-    cmd = _build_command(parsed["action"], parsed["params"])
+    cmd = _build_command(parsed["action"], parsed["params"]) if parsed["action"] else None
     
     result_dict = {
         "command": cmd,
@@ -299,7 +522,8 @@ def 한글(query: str, execute: bool = True, confirm_dangerous: bool = True) -> 
     print(f"\n🗣️ 입력: {query}")
     if parsed["thought"]:
         print(f"💭 생각: {parsed['thought']}")
-    print(f"🔧 액션: {parsed['action']}")
+    if parsed["action"]:
+        print(f"🔧 액션: {parsed['action']}")
     if cmd and not cmd.startswith("__"):
         print(f"🤖 명령어: {cmd}")
     
@@ -331,5 +555,5 @@ if __name__ == "__main__":
     setup()
     print("\n" + "="*50)
     print("Korean Linux 준비 완료!")
-    print("사용법: 한글('파일 목록 보여줘')")
+    print("사용법: 한글('현재 폴더에 뭐 있어?')")
     print("="*50 + "\n")
