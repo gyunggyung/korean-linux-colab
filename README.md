@@ -33,16 +33,17 @@
 
 ## 📸 실행 예시
 
-<table>
-<tr>
-<td><img src="img/ls.png" alt="ls 명령어" width="400"/></td>
-<td><img src="img/cat.png" alt="cat 명령어" width="400"/></td>
-</tr>
-<tr>
-<td><img src="img/tail.png" alt="tail 명령어" width="400"/></td>
-<td><img src="img/df.png" alt="df 명령어" width="400"/></td>
-</tr>
-</table>
+### 📁 "현재 폴더에 뭐 있어?"
+![ls 명령어](img/ls.png)
+
+### 📄 "test.txt 내용 보여줘"
+![cat 명령어](img/cat.png)
+
+### 📋 "app.log 마지막 3줄 보여줘"
+![tail 명령어](img/tail.png)
+
+### 💾 "디스크 남은 용량 보여줘"
+![df 명령어](img/df.png)
 
 ---
 
