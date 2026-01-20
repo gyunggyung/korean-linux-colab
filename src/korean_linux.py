@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Korean Linux - 한국어로 리눅스 명령어 실행하기
-Google Colab 전용 패키지 (v2 - 파라미터 보정 강화)
+Google Colab 전용 패키지 (v3 - 강력한 보정 로직)
 """
 
 import os
@@ -66,11 +66,10 @@ def setup():
     global _model, _tokenizer, _device
     
     if _model is not None:
-        return  # 이미 로딩됨
+        return
     
     print("🔧 Korean Linux 초기화 중...")
     
-    # 필요한 패키지 설치
     try:
         import torch
         import sentencepiece as spm
@@ -82,7 +81,6 @@ def setup():
         import sentencepiece as spm
         from huggingface_hub import hf_hub_download
     
-    # 파일 다운로드
     repo_id = "Yaongi/HybriKo-117M-LinuxFC-SFT-v2"
     files = ["configuration_hybridko.py", "modeling_hybridko.py", 
              "pytorch_model.pt", "HybriKo_tok.model"]
@@ -95,7 +93,6 @@ def setup():
             print(f"  📥 {f} 다운로드 중...")
             hf_hub_download(repo_id, f, local_dir=download_dir)
     
-    # 모델 로딩
     sys.path.insert(0, download_dir)
     from configuration_hybridko import HybriKoConfig
     from modeling_hybridko import HybriKoModel
@@ -137,14 +134,12 @@ def _generate(prompt: str, max_new_tokens: int = 150) -> str:
             next_token = torch.argmax(logits[:, -1, :], dim=-1, keepdim=True)
             generated = torch.cat([generated, next_token], dim=1)
             
-            # 종료 조건 확인
             new_tokens = generated[0, prompt_len:].tolist()
             new_text = _tokenizer.DecodeIds(new_tokens)
             
             if "<|im_end|>" in new_text:
                 break
             
-            # Action Input JSON 완료 확인
             if "Action Input:" in new_text:
                 ai_idx = new_text.find("Action Input:")
                 after_ai = new_text[ai_idx + 13:].strip()
@@ -161,7 +156,7 @@ def _generate(prompt: str, max_new_tokens: int = 150) -> str:
 
 
 def _parse_response(response: str) -> dict:
-    """모델 응답 파싱 - 강화된 버전"""
+    """모델 응답 파싱"""
     if "<|im_end|>" in response:
         response = response.split("<|im_end|>")[0]
     if "<|im" in response:
@@ -169,18 +164,15 @@ def _parse_response(response: str) -> dict:
     
     result = {"thought": None, "action": None, "params": None, "raw": response}
     
-    # Thought 추출 - hallucination 제거
     thought_match = re.search(r"Thought:\s*(.+?)(?=\s*Action:|$)", response, re.DOTALL)
     if thought_match:
         thought = thought_match.group(1).strip()
-        # hallucination 필터링: <|im 또는 이상한 텍스트 제거
         if "<|im" in thought:
             thought = thought.split("<|im")[0].strip()
         if len(thought) > 100:
             thought = thought[:100] + "..."
         result["thought"] = thought
     
-    # Action 추출 - 정규 액션만 허용
     valid_actions = [
         "ls_command", "cd_command", "mkdir_command", "rm_command",
         "cp_command", "mv_command", "find_command", "cat_command",
@@ -195,7 +187,6 @@ def _parse_response(response: str) -> dict:
         if action in valid_actions:
             result["action"] = action
     
-    # Action Input 추출
     input_match = re.search(r"Action Input:\s*(\{[^}]+\})", response, re.DOTALL)
     if input_match:
         try:
@@ -206,50 +197,203 @@ def _parse_response(response: str) -> dict:
     return result
 
 
-def _extract_params_from_query(query: str, action: str) -> dict:
-    """사용자 쿼리에서 파라미터 추출 (fallback)"""
-    params = {}
+def _infer_action_from_query(query: str) -> str:
+    """쿼리에서 액션 추론 - 강화된 키워드 매칭"""
+    q = query.lower()
     
-    # 파일/폴더 패턴
-    file_pattern = r'([^\s]+\.(txt|log|py|sh|csv|json|md|tar\.gz|tar|gz|zip))'
-    folder_pattern = r'([a-zA-Z0-9_\-./]+(?:폴더|디렉토리)?)'
+    # 우선순위 높은 키워드 (먼저 확인)
+    # tail (마지막, 끝, 뒷부분)
+    if any(kw in q for kw in ["마지막", "끝", "뒷부분", "tail"]) and any(kw in q for kw in ["줄", "보여", "봐"]):
+        return "tail_command"
     
-    file_match = re.search(file_pattern, query)
+    # head (처음, 앞부분, 첫)
+    if any(kw in q for kw in ["처음", "앞부분", "첫", "head"]) and any(kw in q for kw in ["줄", "보여", "봐"]):
+        return "head_command"
+    
+    # grep (찾아, 검색, 에서 ... 찾)
+    if "에서" in q and any(kw in q for kw in ["찾아", "검색"]):
+        return "grep_command"
+    
+    # find (파일 찾, 폴더에서 찾)
+    if any(kw in q for kw in ["파일 찾", "폴더에서"]) and "찾" in q:
+        return "find_command"
+    
+    # df (디스크, 남은 용량, df)
+    if any(kw in q for kw in ["디스크", "남은 용량", "남은 공간"]):
+        return "df_command"
+    
+    # du (폴더 용량, 폴더 크기, 현재 폴더 용량)
+    if any(kw in q for kw in ["폴더 용량", "폴더 크기", "현재 폴더 용량"]):
+        return "du_command"
+    
+    # ps (프로세스, 실행 중)
+    if any(kw in q for kw in ["프로세스", "실행 중"]):
+        return "ps_command"
+    
+    # ping
+    if any(kw in q for kw in ["핑", "ping"]):
+        return "ping_command"
+    
+    # cp (복사)
+    if any(kw in q for kw in ["복사", "copy", "cp "]):
+        return "cp_command"
+    
+    # mv (이동, 옮겨, 이름 바꿔)
+    if any(kw in q for kw in ["이름 바꿔", "rename"]) or ("옮겨" in q and "폴더" not in q):
+        return "mv_command"
+    
+    # cd (이동, 폴더로, 가줘)
+    if any(kw in q for kw in ["폴더로 이동", "디렉토리로 이동", "폴더로 가", "가줘"]):
+        return "cd_command"
+    
+    # mkdir (폴더 만들, 디렉토리 만들)
+    if any(kw in q for kw in ["폴더 만들", "디렉토리 만들", "mkdir"]):
+        return "mkdir_command"
+    
+    # rm (삭제, 지워)
+    if any(kw in q for kw in ["삭제", "지워", "rm "]):
+        return "rm_command"
+    
+    # wc (몇 줄, 줄 수, 라인 수)
+    if any(kw in q for kw in ["몇 줄", "줄 수", "라인 수"]):
+        return "wc_command"
+    
+    # cat (내용 보여, 읽어)
+    if any(kw in q for kw in ["내용 보여", "내용 출력", "읽어"]):
+        return "cat_command"
+    
+    # ls (파일 목록, 뭐 있, 폴더 내용, 상세 정보)
+    if any(kw in q for kw in ["파일 목록", "뭐 있", "폴더 내용", "상세 정보", "ls"]):
+        return "ls_command"
+    
+    # top
+    if any(kw in q for kw in ["시스템 상태", "리소스", "top"]):
+        return "top_command"
+    
+    return None
+
+
+def _extract_file_from_query(query: str) -> str:
+    """쿼리에서 파일명 추출"""
+    # 파일 확장자 패턴
+    file_match = re.search(r'([a-zA-Z0-9_\-./]+\.(txt|log|py|sh|csv|json|md|tar\.gz|tar|gz|zip|yaml|yml))', query)
+    if file_match:
+        return file_match.group(1)
+    return None
+
+
+def _extract_folder_from_query(query: str) -> str:
+    """쿼리에서 폴더명 추출"""
+    # "XXX 폴더" 패턴
     folder_match = re.search(r'([a-zA-Z0-9_\-./]+)\s*(폴더|디렉토리)', query)
+    if folder_match:
+        return folder_match.group(1)
+    return None
+
+
+def _extract_pattern_from_query(query: str) -> str:
+    """쿼리에서 검색 패턴 추출 (따옴표 안 우선)"""
+    # 작은따옴표 안의 내용
+    sq_match = re.search(r"'([^']+)'", query)
+    if sq_match:
+        return sq_match.group(1)
     
-    # 액션별 파라미터 추출
-    if action == "ls_command":
-        params["path"] = "."
-        if folder_match:
-            params["path"] = folder_match.group(1)
+    # 큰따옴표 안의 내용
+    dq_match = re.search(r'"([^"]+)"', query)
+    if dq_match:
+        return dq_match.group(1)
     
-    elif action == "cd_command":
-        if folder_match:
-            params["path"] = folder_match.group(1)
-        elif "홈" in query:
-            params["path"] = "~"
-        elif ".." in query or "상위" in query:
-            params["path"] = ".."
-        else:
-            # 가장 긴 경로 같은 문자열 추출
-            path_match = re.search(r'([a-zA-Z0-9_\-./]+)', query)
-            if path_match:
-                params["path"] = path_match.group(1)
+    # "XXX가 포함된" 패턴
+    include_match = re.search(r'(\w+)가?\s*(포함된|있는|들어간)', query)
+    if include_match:
+        return include_match.group(1)
     
-    elif action in ["cat_command", "head_command", "tail_command", "wc_command"]:
-        if file_match:
-            params["path"] = file_match.group(1)
+    return None
+
+
+def _extract_lines_from_query(query: str) -> int:
+    """쿼리에서 줄 수 추출"""
+    # "N줄" 패턴
+    line_match = re.search(r'(\d+)\s*줄', query)
+    if line_match:
+        return int(line_match.group(1))
+    return 10  # 기본값
+
+
+def _extract_cp_params_from_query(query: str) -> dict:
+    """cp 명령어용 소스/목적지 추출"""
+    # "XXX를 YYY로 복사" 패턴
+    cp_match = re.search(r'([a-zA-Z0-9_\-./]+)\s*를?\s*(backup/|[a-zA-Z0-9_\-./]+/?)\s*(로|으로)?\s*복사', query)
+    if cp_match:
+        return {"source": cp_match.group(1), "destination": cp_match.group(2)}
+    
+    # 파일명만 추출
+    file = _extract_file_from_query(query)
+    if file:
+        # 목적지 폴더 찾기
+        dest_match = re.search(r'(backup|[a-zA-Z0-9_\-]+)/?', query)
+        if dest_match and dest_match.group(1) != file.split('.')[0]:
+            return {"source": file, "destination": dest_match.group(1) + "/"}
+    
+    return {}
+
+
+def _correct_action(action: str, query: str) -> str:
+    """모델이 반환한 액션이 잘못됐을 때 보정"""
+    inferred = _infer_action_from_query(query)
+    
+    # 모델이 cat을 반환했지만 실제로는 다른 명령어여야 하는 경우
+    if action == "cat_command":
+        if inferred in ["df_command", "ps_command", "tail_command", "head_command", "ls_command"]:
+            return inferred
+    
+    # 모델이 grep을 반환했지만 실제로는 find여야 하는 경우
+    if action == "grep_command":
+        if inferred == "find_command":
+            return inferred
+    
+    # 액션이 None이면 추론한 것 사용
+    if action is None:
+        return inferred
+    
+    return action
+
+
+def _correct_params(action: str, params: dict, query: str) -> dict:
+    """파라미터 보정 - 강화된 버전"""
+    if params is None:
+        params = {}
+    
+    # 액션별 파라미터 보정
+    if action == "cat_command":
+        if not params.get("path"):
+            params["path"] = _extract_file_from_query(query) or ""
+    
+    elif action == "head_command":
+        if not params.get("path"):
+            params["path"] = _extract_file_from_query(query) or ""
+        if not params.get("lines"):
+            params["lines"] = _extract_lines_from_query(query)
+    
+    elif action == "tail_command":
+        if not params.get("path"):
+            params["path"] = _extract_file_from_query(query) or ""
+        if not params.get("lines"):
+            params["lines"] = _extract_lines_from_query(query)
     
     elif action == "grep_command":
-        # 패턴 추출 (따옴표 안이나 영문 단어)
-        pattern_match = re.search(r"['\"]([^'\"]+)['\"]|(\b[a-zA-Z]+\b)", query)
-        if pattern_match:
-            params["pattern"] = pattern_match.group(1) or pattern_match.group(2)
-        if file_match:
-            params["path"] = file_match.group(1)
+        # 패턴 추출 (따옴표 안 우선)
+        if not params.get("pattern") or params.get("pattern") == "app":
+            extracted = _extract_pattern_from_query(query)
+            if extracted:
+                params["pattern"] = extracted
+        # 파일 추출
+        if not params.get("path"):
+            params["path"] = _extract_file_from_query(query) or ""
     
     elif action == "find_command":
         params["path"] = "."
+        # 확장자 추출
         if "txt" in query:
             params["name"] = "*.txt"
         elif "log" in query:
@@ -259,37 +403,64 @@ def _extract_params_from_query(query: str, action: str) -> dict:
         else:
             params["name"] = "*"
     
+    elif action == "cd_command":
+        if not params.get("path"):
+            folder = _extract_folder_from_query(query)
+            if folder:
+                params["path"] = folder
+            elif "홈" in query:
+                params["path"] = "~"
+            elif ".." in query or "상위" in query:
+                params["path"] = ".."
+    
+    elif action == "ls_command":
+        if not params.get("path"):
+            folder = _extract_folder_from_query(query)
+            params["path"] = folder or "."
+    
     elif action == "mkdir_command":
-        if folder_match:
-            params["path"] = folder_match.group(1)
-        else:
-            name_match = re.search(r'([a-zA-Z0-9_\-]+)', query)
-            if name_match:
-                params["path"] = name_match.group(1)
+        if not params.get("path"):
+            folder = _extract_folder_from_query(query)
+            if folder:
+                params["path"] = folder
     
     elif action == "rm_command":
-        if file_match:
-            params["path"] = file_match.group(1)
-        elif folder_match:
-            params["path"] = folder_match.group(1)
-            params["recursive"] = True
+        if not params.get("path"):
+            file = _extract_file_from_query(query)
+            folder = _extract_folder_from_query(query)
+            params["path"] = file or folder or ""
+            if folder and not file:
+                params["recursive"] = True
+    
+    elif action == "cp_command":
+        cp_params = _extract_cp_params_from_query(query)
+        if cp_params:
+            params.update(cp_params)
+    
+    elif action == "wc_command":
+        if not params.get("path"):
+            params["path"] = _extract_file_from_query(query) or ""
     
     elif action == "ping_command":
-        if "구글" in query or "google" in query.lower():
-            params["host"] = "google.com"
-        elif "네이버" in query or "naver" in query.lower():
-            params["host"] = "naver.com"
-        else:
-            host_match = re.search(r'([a-zA-Z0-9\-]+\.[a-zA-Z]{2,})', query)
-            if host_match:
-                params["host"] = host_match.group(1)
-        params["count"] = 4
+        if not params.get("host"):
+            if "구글" in query or "google" in query.lower():
+                params["host"] = "google.com"
+            elif "네이버" in query or "naver" in query.lower():
+                params["host"] = "naver.com"
+            else:
+                host_match = re.search(r'([a-zA-Z0-9\-]+\.[a-zA-Z]{2,})', query)
+                if host_match:
+                    params["host"] = host_match.group(1)
+                else:
+                    params["host"] = "google.com"
+        if not params.get("count"):
+            params["count"] = 4
     
     elif action == "df_command":
         params["options"] = "-h"
     
     elif action == "du_command":
-        params["path"] = "."
+        params["path"] = params.get("path", ".")
         params["options"] = "-sh"
     
     elif action == "ps_command":
@@ -301,82 +472,9 @@ def _extract_params_from_query(query: str, action: str) -> dict:
     return params
 
 
-def _find_similar_file(filename: str) -> str:
-    """현재 디렉토리에서 유사한 파일 찾기"""
-    try:
-        files = os.listdir(".")
-        best_match = None
-        best_ratio = 0.0
-        
-        for f in files:
-            ratio = SequenceMatcher(None, filename.lower(), f.lower()).ratio()
-            if ratio > best_ratio and ratio > 0.5:
-                best_ratio = ratio
-                best_match = f
-        
-        return best_match
-    except:
-        return None
-
-
-def _correct_params(action: str, params: dict, query: str) -> dict:
-    """파라미터 보정 - 모델 출력이 불완전할 때"""
-    if params is None:
-        params = {}
-    
-    # 쿼리에서 추출한 파라미터로 보완
-    fallback_params = _extract_params_from_query(query, action)
-    
-    # 필요한 파라미터가 없으면 fallback 사용
-    if action in ["cat_command", "head_command", "tail_command", "wc_command"]:
-        if not params.get("path"):
-            params["path"] = fallback_params.get("path", "")
-        # 파일 존재 확인
-        if params.get("path") and not os.path.exists(params["path"]):
-            similar = _find_similar_file(params["path"])
-            if similar:
-                params["path"] = similar
-    
-    elif action == "cd_command":
-        if not params.get("path"):
-            params["path"] = fallback_params.get("path", ".")
-    
-    elif action == "ls_command":
-        if not params.get("path"):
-            params["path"] = fallback_params.get("path", ".")
-    
-    elif action == "grep_command":
-        if not params.get("pattern"):
-            params["pattern"] = fallback_params.get("pattern", "")
-        if not params.get("path"):
-            params["path"] = fallback_params.get("path", "")
-    
-    elif action == "find_command":
-        if not params.get("path"):
-            params["path"] = fallback_params.get("path", ".")
-        if not params.get("name"):
-            params["name"] = fallback_params.get("name", "*")
-    
-    elif action == "mkdir_command":
-        if not params.get("path"):
-            params["path"] = fallback_params.get("path", "")
-    
-    elif action == "ping_command":
-        if not params.get("host"):
-            params["host"] = fallback_params.get("host", "google.com")
-        if not params.get("count"):
-            params["count"] = 4
-    
-    elif action in ["df_command", "ps_command", "top_command", "du_command"]:
-        params = {**fallback_params, **params}
-    
-    return params
-
-
 def _build_command(action: str, params: dict) -> str:
     """액션과 파라미터로 실제 명령어 생성"""
     
-    # Colab 특수 처리
     if action == "cd_command":
         return f"__CD__:{params.get('path', '.')}"
     
@@ -391,7 +489,6 @@ def _build_command(action: str, params: dict) -> str:
     if action == "Finish":
         return f"__FINISH__:{params.get('final_answer', params.get('give_answer', ''))}"
     
-    # 일반 명령어
     cmd_map = {
         "ls_command": lambda p: f"ls {p.get('options', '-la')} {p.get('path', '.')}".strip(),
         "mkdir_command": lambda p: f"mkdir -p {p.get('path', '')}",
@@ -399,17 +496,17 @@ def _build_command(action: str, params: dict) -> str:
         "cp_command": lambda p: f"cp -r {p.get('source', '')} {p.get('destination', '')}",
         "mv_command": lambda p: f"mv {p.get('source', '')} {p.get('destination', '')}",
         "find_command": lambda p: f"find {p.get('path', '.')} -name '{p.get('name', '*')}'",
-        "cat_command": lambda p: f"cat {p.get('options', '')} {p.get('path', '')}".strip(),
-        "grep_command": lambda p: f"grep {p.get('options', '')} '{p.get('pattern', '')}' {p.get('path', '')}".strip(),
+        "cat_command": lambda p: f"cat {p.get('path', '')}".strip(),
+        "grep_command": lambda p: f"grep '{p.get('pattern', '')}' {p.get('path', '')}".strip(),
         "head_command": lambda p: f"head -n {p.get('lines', 10)} {p.get('path', '')}",
         "tail_command": lambda p: f"tail -n {p.get('lines', 10)} {p.get('path', '')}",
-        "wc_command": lambda p: f"wc {p.get('options', '-l')} {p.get('path', '')}",
+        "wc_command": lambda p: f"wc -l {p.get('path', '')}",
         "ps_command": lambda p: f"ps {p.get('options', 'aux')}",
         "df_command": lambda p: f"df {p.get('options', '-h')}",
         "du_command": lambda p: f"du {p.get('options', '-sh')} {p.get('path', '.')}",
         "curl_command": lambda p: f"curl {p.get('options', '')} {p.get('url', '')}".strip(),
         "chmod_command": lambda p: f"chmod {p.get('mode', '')} {p.get('path', '')}",
-        "tar_command": lambda p: f"tar -czf {p.get('archive', '')} {p.get('files', '')}".strip() if p.get('operation') == 'create' else f"tar -xzf {p.get('archive', '')}",
+        "tar_command": lambda p: f"tar -xzf {p.get('archive', '')}" if "풀" in str(p) else f"tar -czf {p.get('archive', '')} {p.get('files', '')}".strip(),
     }
     
     if action in cmd_map:
@@ -421,7 +518,6 @@ def _build_command(action: str, params: dict) -> str:
 def _execute_command(cmd: str) -> str:
     """명령어 실행"""
     
-    # cd 특수 처리
     if cmd.startswith("__CD__:"):
         path = cmd[7:]
         try:
@@ -430,11 +526,9 @@ def _execute_command(cmd: str) -> str:
         except Exception as e:
             return f"오류: {e}"
     
-    # Finish 처리
     if cmd.startswith("__FINISH__:"):
         return cmd[11:]
     
-    # 일반 명령어 실행
     try:
         result = subprocess.run(
             cmd, shell=True, capture_output=True, text=True, timeout=30
@@ -447,62 +541,28 @@ def _execute_command(cmd: str) -> str:
         return f"오류: {e}"
 
 
-def _infer_action_from_query(query: str) -> str:
-    """쿼리에서 액션 추론 (모델이 실패했을 때)"""
-    query_lower = query.lower()
-    
-    keywords = {
-        "ls_command": ["파일 목록", "뭐 있", "ls", "폴더 내용", "디렉토리 내용", "파일 보여", "목록 보여"],
-        "cd_command": ["이동", "폴더로", "디렉토리로", "가줘", "cd"],
-        "cat_command": ["내용 보여", "내용 출력", "읽어", "cat", "보여줘"],
-        "grep_command": ["찾아", "검색", "grep", "포함된"],
-        "find_command": ["find", "파일 찾", "검색"],
-        "mkdir_command": ["폴더 만들", "디렉토리 만들", "mkdir", "생성"],
-        "rm_command": ["삭제", "지워", "rm", "제거"],
-        "df_command": ["디스크", "용량", "df", "남은 공간"],
-        "du_command": ["폴더 크기", "폴더 용량", "du"],
-        "ps_command": ["프로세스", "실행 중", "ps"],
-        "ping_command": ["핑", "ping", "네트워크"],
-        "head_command": ["앞부분", "처음", "head"],
-        "tail_command": ["뒷부분", "마지막", "끝", "tail"],
-        "wc_command": ["줄 수", "라인 수", "몇 줄", "wc"],
-        "top_command": ["시스템 상태", "top", "리소스"],
-    }
-    
-    for action, kws in keywords.items():
-        for kw in kws:
-            if kw in query_lower:
-                return action
-    
-    return None
-
-
 def 한글(query: str, execute: bool = True, confirm_dangerous: bool = True) -> dict:
     """
     한국어로 리눅스 명령어 실행
     
     Args:
-        query: 한국어 명령 (예: "현재 폴더에 뭐 있어?", "test.txt 내용 보여줘")
-        execute: True면 명령어 실행, False면 변환만
-        confirm_dangerous: True면 위험 명령어 확인 요청
+        query: 한국어 명령
+        execute: True면 명령어 실행
+        confirm_dangerous: True면 위험 명령어 확인
     
     Returns:
-        dict: {"command": str, "result": str, "action": str, "thought": str}
+        dict: {"command": str, "result": str, "action": str}
     """
-    # 초기화 확인
     if _model is None:
         setup()
     
-    # 프롬프트 생성
     prompt = f"<|im_start|>system\n{SYSTEM_PROMPT}<|im_end|>\n<|im_start|>user\n{query}<|im_end|>\n<|im_start|>assistant\n"
     
-    # 생성 및 파싱
     response = _generate(prompt)
     parsed = _parse_response(response)
     
-    # 액션이 없으면 쿼리에서 추론
-    if not parsed["action"]:
-        parsed["action"] = _infer_action_from_query(query)
+    # 액션 보정 (모델이 잘못 반환했을 때)
+    parsed["action"] = _correct_action(parsed["action"], query)
     
     # 파라미터 보정
     parsed["params"] = _correct_params(parsed["action"], parsed["params"], query)
@@ -518,7 +578,6 @@ def 한글(query: str, execute: bool = True, confirm_dangerous: bool = True) -> 
         "params": parsed["params"]
     }
     
-    # 출력
     print(f"\n🗣️ 입력: {query}")
     if parsed["thought"]:
         print(f"💭 생각: {parsed['thought']}")
@@ -527,7 +586,6 @@ def 한글(query: str, execute: bool = True, confirm_dangerous: bool = True) -> 
     if cmd and not cmd.startswith("__"):
         print(f"🤖 명령어: {cmd}")
     
-    # 위험 명령어 확인
     if confirm_dangerous and parsed["action"] == "rm_command":
         if parsed["params"] and parsed["params"].get("recursive"):
             print("⚠️  경고: 재귀 삭제 명령입니다!")
@@ -537,7 +595,6 @@ def 한글(query: str, execute: bool = True, confirm_dangerous: bool = True) -> 
                 print(f"📁 결과: {result_dict['result']}")
                 return result_dict
     
-    # 실행
     if execute and cmd:
         result_dict["result"] = _execute_command(cmd)
         print(f"📁 결과:\n{result_dict['result']}")
@@ -546,7 +603,6 @@ def 한글(query: str, execute: bool = True, confirm_dangerous: bool = True) -> 
     return result_dict
 
 
-# 별칭
 linux = 한글
 ㅎㄱ = 한글
 
@@ -554,6 +610,6 @@ linux = 한글
 if __name__ == "__main__":
     setup()
     print("\n" + "="*50)
-    print("Korean Linux 준비 완료!")
+    print("Korean Linux v3 준비 완료!")
     print("사용법: 한글('현재 폴더에 뭐 있어?')")
     print("="*50 + "\n")

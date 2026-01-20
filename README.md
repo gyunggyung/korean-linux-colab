@@ -75,7 +75,7 @@ from src.korean_linux import 한글
 
 - **모델**: [HybriKo-117M-LinuxFC-SFT-v2](https://huggingface.co/Yaongi/HybriKo-117M-LinuxFC-SFT-v2)
 - **아키텍처**: Griffin-style Hybrid (RNN + Attention)
-- **정확도**: Action Name 100%
+- **정확도**: Action Name 추출 잘함
 
 ---
 
@@ -83,7 +83,7 @@ from src.korean_linux import 한글
 
 | 항목 | 정확도 |
 |------|--------|
-| 명령어 선택 | ✅ 100% |
+| 명령어 선택 | ✅ 상당히 잘함 |
 | 파라미터 | ⚠️ 가끔 오류 (자동 보정됨) |
 
 ---
@@ -96,4 +96,4 @@ MIT License
 
 ## 🙏 Acknowledgments
 
-- HybriKo 모델 개발: [@gyunggyung](https://github.com/gyunggyung)
+- HybriKo 모델 개발: [@gyunggyung](https://github.com/gyunggyung) [@victor0777](https://github.com/victor0777)
