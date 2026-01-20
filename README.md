@@ -16,6 +16,52 @@
 
 ---
 
+##  Quick Start
+
+### Colab에서 바로 실행
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/gyunggyung/korean-linux-colab/blob/main/한글_linux.ipynb)
+
+### 사용 예시
+```python
+한글("현재 폴더에 뭐 있어?")      # ls -la
+한글("test.txt 내용 보여줘")      # cat test.txt
+한글("main.py 몇 줄이야?")        # wc -l main.py
+한글("구글에 핑 날려봐")          # ping -c 4 google.com
+```
+
+---
+
+## ✅ 잘 되는 명령어
+
+| 작업 | 한국어 명령 | 결과 |
+|------|------------|------|
+| 파일 목록 | `현재 폴더에 뭐 있어?` | ✅ `ls -la .` |
+| 파일 내용 | `test.txt 내용 보여줘` | ✅ `cat test.txt` |
+| 줄 수 | `main.py 몇 줄이야?` | ✅ `wc -l main.py` |
+| 폴더 용량 | `현재 폴더 용량 얼마야?` | ✅ `du -sh .` |
+| 네트워크 | `구글에 핑 날려봐` | ✅ `ping -c 4 google.com` |
+| 폴더 만들기 | `backup 폴더 만들어줘` | ✅ `mkdir -p backup` |
+| 폴더 이동 | `examples 폴더로 이동해` | ✅ `cd examples` |
+
+---
+
+## ⚠️ 아직 불안정한 명령어
+
+> **Note**: 117M 소형 모델의 한계로 일부 명령어는 파라미터 생성이 불안정합니다.
+
+| 작업 | 한국어 명령 | 현재 상태 |
+|------|------------|----------|
+| 파일 끝부분 | `app.log 마지막 3줄 보여줘` | ⚠️ `tail` 대신 `cat` 사용 |
+| 파일 검색 | `app.log에서 'ERROR' 찾아줘` | ⚠️ 패턴 추출 불안정 |
+| 파일 찾기 | `현재 폴더에서 txt 파일 찾아줘` | ⚠️ `find` 대신 `grep` 사용 |
+| 디스크 용량 | `디스크 남은 용량 보여줘` | ⚠️ `df` 인식 불안정 |
+| 프로세스 | `실행 중인 프로세스 보여줘` | ⚠️ `ps` 인식 불안정 |
+| 파일 복사 | `test.txt를 backup/으로 복사해` | ⚠️ 파라미터 파싱 실패 |
+
+**개선 예정**: 더 큰 모델로 SFT를 진행하면 정확도가 향상될 예정입니다.
+
+---
+
 ## 📋 지원 명령어 (21개)
 
 | 파일 관리 | 시스템 | 네트워크 |
@@ -27,64 +73,13 @@
 
 ---
 
-## 🚀 Quick Start
-
-### Colab에서 바로 실행
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/gyunggyung/korean-linux-colab/blob/main/한글_linux.ipynb)
-
-### 또는 수동 설정
-```python
-# 1. 저장소 클론
-!git clone https://github.com/gyunggyung/korean-linux-colab.git
-%cd korean-linux-colab
-
-# 2. 사용
-from src.korean_linux import 한글
-
-한글("현재 폴더의 파일 목록을 보여줘")
-# 🤖 명령어: ls -la
-# 📁 결과: ...
-
-한글("디스크 사용량을 확인해줘")
-# 🤖 명령어: df -h
-# 📁 결과: ...
-```
-
----
-
-## 📖 사용 예제
-
-```python
-# 파일 관리
-한글("파일 목록 보여줘")           # ls
-한글("data 폴더 만들어줘")         # mkdir data
-한글("test.txt 내용 보여줘")       # cat test.txt
-
-# 검색
-한글("error가 포함된 줄 찾아줘")    # grep error
-한글("txt 파일 찾아줘")            # find . -name "*.txt"
-
-# 시스템
-한글("디스크 사용량 알려줘")        # df -h
-한글("실행 중인 프로세스 보여줘")   # ps aux
-```
-
----
-
 ## 🔧 기술 스택
 
 - **모델**: [HybriKo-117M-LinuxFC-SFT-v2](https://huggingface.co/Yaongi/HybriKo-117M-LinuxFC-SFT-v2)
 - **아키텍처**: Griffin-style Hybrid (RNN + Attention)
-- **정확도**: Action Name 추출 잘함
-
----
-
-## ⚠️ 알려진 제한사항
-
-| 항목 | 정확도 |
-|------|--------|
-| 명령어 선택 | ✅ 상당히 잘함 |
-| 파라미터 | ⚠️ 가끔 오류 (자동 보정됨) |
+- **파라미터**: 117.8M
+- **Action Name 정확도**: 100% (21개 명령어)
+- **Parameters 정확도**: 약 60% (일부 불안정)
 
 ---
 
@@ -96,4 +91,4 @@ MIT License
 
 ## 🙏 Acknowledgments
 
-- HybriKo 모델 개발: [@gyunggyung](https://github.com/gyunggyung) [@victor0777](https://github.com/victor0777)
+- HybriKo 모델 개발: [@gyunggyung](https://github.com/gyunggyung)
